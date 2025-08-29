@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  omg-rome:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: omg-rome:latest
+    container_name: omg-rome
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3100
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./logs:/app/logs

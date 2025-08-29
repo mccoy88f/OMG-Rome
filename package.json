@@ -1,0 +1,26 @@
+{
+  "name": "omg-rome",
+  "version": "1.0.0",
+  "description": "Universal Stremio addon gateway with pluggable video sources",
+  "main": "src/gateway.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/gateway.js",
+    "dev": "NODE_ENV=development nodemon src/gateway.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mccoy88f/OMG-Rome"
+  },
+  "author": "McCoy88f",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.19.2",
+    "cors": "^2.8.5",
+    "morgan": "^1.10.0",
+    "axios": "^1.7.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}
