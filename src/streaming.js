@@ -70,7 +70,59 @@ class StreamingService {
         });
     }
 
-    async getVideoInfo(videoUrl) {
+    async getDirectStreamUrl(videoUrl) {
+        console.log(`Extracting direct URL for: ${videoUrl}`);
+        
+        return new Promise((resolve, reject) => {
+            const ytDlp = spawn('yt-dlp', [
+                '-f', 'bestvideo+bestaudio/best',
+                '-g', // Get URL only, don't download
+                '--no-playlist',
+                '--extractor-args', 'youtube:player_client=android',
+                '--no-check-certificates',
+                videoUrl
+            ]);
+
+            let stdout = '';
+            let stderr = '';
+
+            ytDlp.stdout.on('data', (data) => {
+                stdout += data.toString();
+            });
+
+            ytDlp.stderr.on('data', (data) => {
+                stderr += data.toString();
+            });
+
+            ytDlp.on('close', (code) => {
+                if (code === 0) {
+                    const urls = stdout.trim().split('\n').filter(url => url.startsWith('http'));
+                    if (urls.length > 0) {
+                        // Return first valid URL
+                        console.log(`Direct URL extracted successfully`);
+                        resolve(urls[0]);
+                    } else {
+                        console.error('No valid URL found in yt-dlp output');
+                        reject(new Error('No valid stream URL extracted'));
+                    }
+                } else {
+                    console.error(`yt-dlp URL extraction failed: ${stderr}`);
+                    reject(new Error(`URL extraction failed: ${stderr}`));
+                }
+            });
+
+            ytDlp.on('error', (error) => {
+                console.error('yt-dlp URL extraction error:', error.message);
+                reject(error);
+            });
+
+            // Timeout for URL extraction
+            setTimeout(() => {
+                ytDlp.kill();
+                reject(new Error('URL extraction timeout'));
+            }, 15000);
+        });
+    }
         return new Promise((resolve, reject) => {
             const ytDlp = spawn('yt-dlp', [
                 '--dump-json',
