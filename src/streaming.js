@@ -4,22 +4,50 @@ class StreamingService {
     async createFastStream(videoUrl) {
         console.log(`        Initializing fast stream (pre-merged) for: ${videoUrl}`);
         
+        try {
+            // Ottieni URL diretto per streaming rapido (solo MP4 pre-mergeati)
+            const directUrl = await this.createFastStreamUrl(videoUrl);
+            console.log(`        Fast stream URL diretto ottenuto: ${directUrl}`);
+            
+            // Per il flusso rapido, restituisci sempre l'URL diretto
+            // Non facciamo merge, non generiamo HLS
+            const { Readable } = require('stream');
+            const stream = new Readable();
+            stream.push(`# Direct MP4 Stream
+# URL: ${directUrl}
+# Format: Pre-merged MP4 (no ffmpeg required)
+# Quality: Fast (720p max)`);
+            stream.push(null);
+            return stream;
+            
+        } catch (error) {
+            console.log(`        Fast URL failed, falling back to streaming: ${error.message}`);
+            return this.createFastStreamDirect(videoUrl);
+        }
+    }
+
+    /**
+     * Crea uno stream rapido usando yt-dlp (fallback)
+     * @param {string} videoUrl - URL del video YouTube
+     * @returns {Promise<Readable>} Stream leggibile
+     */
+    async createFastStreamDirect(videoUrl) {
         return new Promise((resolve, reject) => {
             const startTime = Date.now();
             
             const ytDlp = spawn('yt-dlp', [
-                '-f', 'best[height<=720][ext=mp4]/best[height<=720]/best[ext=mp4]/best', // Pre-merged format, no ffmpeg needed
+                '-f', 'best[height<=720]/best', // Formati già ricomposti, max 720p
                 '-o', '-',
                 '--no-playlist',
                 '--no-cache-dir',
                 '--buffer-size', '32K',
-                '--http-chunk-size', '5M',
-                '--retries', '2',
+                '--http-chunk-size', '2M', // Ridotto per streaming come versione vecchia
+                '--retries', '3',
                 '--socket-timeout', '30',
-                '--extractor-args', 'youtube:player_client=android',
+                '--extractor-args', 'youtube:player_client=android', // Solo android come versione vecchia
+                '--extractor-args', 'youtube:formats=missing_pot', // CHIAVE: abilita formati senza PO token
                 '--no-check-certificates',
-                '--audio-format', 'm4a',
-                '--audio-quality', '0',
+                '--recode-video', 'mp4', // CHIAVE: forza ricodifica MP4 compatibile
                 videoUrl
             ], {
                 stdio: ['ignore', 'pipe', 'pipe']
@@ -28,11 +56,11 @@ class StreamingService {
             let totalBytes = 0;
             let streamReady = false;
             let initTimeout = null;
-            const INIT_TIMEOUT = 10000; // 10 seconds max for pre-merged
+            const INIT_TIMEOUT = 25000; // 25 seconds max for pre-merged (aumentato da 10s)
 
             initTimeout = setTimeout(() => {
                 if (!streamReady) {
-                    console.error(`        FAST STREAM TIMEOUT after 10 seconds`);
+                    console.error(`        FAST STREAM TIMEOUT after 25 seconds`);
                     ytDlp.kill('SIGKILL');
                     reject(new Error('Fast stream initialization timeout'));
                 }
@@ -100,23 +128,23 @@ class StreamingService {
             const startTime = Date.now();
             
             const ytDlp = spawn('yt-dlp', [
-                '-f', 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best',
+                '-f', 'bestvideo+bestaudio/best', // Manteniamo bestvideo+bestaudio per il merge
                 '-o', '-',
                 '--no-playlist',
                 '--no-cache-dir',
                 '--buffer-size', '64K',
-                '--http-chunk-size', '10M',
-                '--retries', '3',
-                '--fragment-retries', '3',
-                '--socket-timeout', '90', // Increased timeout
-                '--retry-sleep', '2',
-                '--merge-output-format', 'mp4',
-                '--extractor-args', 'youtube:player_client=android',
+                '--http-chunk-size', '2M', // Ridotto per streaming come versione vecchia
+                '--retries', '5', // Aumentato come versione vecchia
+                '--fragment-retries', '5',
+                '--socket-timeout', '60', // Aumentato come versione vecchia
+                '--retry-sleep', '1',
+                '--merge-output-format', 'mp4', // CHIAVE: forza ricodifica MP4 compatibile
+                '--recode-video', 'mp4', // CHIAVE: forza ricodifica MP4 compatibile
+                '--extractor-args', 'youtube:player_client=android', // Solo android come versione vecchia
+                '--extractor-args', 'youtube:formats=missing_pot', // CHIAVE: abilita formati senza PO token
                 '--no-check-certificates',
                 '--hls-prefer-native',
                 '--prefer-ffmpeg',
-                '--audio-format', 'm4a',
-                '--audio-quality', '0',
                 videoUrl
             ], {
                 stdio: ['ignore', 'pipe', 'pipe']
@@ -266,6 +294,72 @@ class StreamingService {
                 ytDlp.kill();
                 resolve(false);
             }, 5000);
+        });
+    }
+
+    /**
+     * Crea un URL diretto per streaming rapido (pre-mergeato)
+     * @param {string} videoUrl - URL del video YouTube
+     * @returns {Promise<string>} URL diretto per streaming
+     */
+    async createFastStreamUrl(videoUrl) {
+        return new Promise((resolve, reject) => {
+            console.log(`        Fast URL: Estrazione URL diretto per: ${videoUrl}`);
+            
+            const ytDlp = spawn('yt-dlp', [
+                '-g', // Solo URL, non scaricare
+                '-f', 'best[height<=720][protocol=m3u8_native]/best[height<=720]/best', // Prima HLS, poi MP4
+                '--no-playlist',
+                '--no-cache-dir',
+                '--extractor-args', 'youtube:player_client=android,web,mweb', // Più client per più formati
+                '--extractor-args', 'youtube:formats=missing_pot', // CHIAVE: abilita formati senza PO token
+                '--no-check-certificates',
+                videoUrl
+            ], {
+                stdio: ['ignore', 'pipe', 'pipe']
+            });
+
+            let stdout = '';
+            let stderr = '';
+
+            ytDlp.stdout.on('data', (data) => {
+                stdout += data.toString();
+            });
+
+            ytDlp.stderr.on('data', (data) => {
+                const stderrText = data.toString();
+                if (stderrText.includes('WARNING') && !stderrText.includes('PO Token')) {
+                    console.log(`        Fast URL Warning: ${stderrText.trim()}`);
+                }
+            });
+
+            ytDlp.on('close', (code) => {
+                if (code === 0) {
+                    const url = stdout.trim().split('\n')[0];
+                    if (url && url.startsWith('http')) {
+                        console.log(`        Fast URL SUCCESS: ${url}`);
+                        resolve(url);
+                    } else {
+                        console.log(`        Fast URL ERROR: URL non valido: ${url}`);
+                        reject(new Error('URL non valido estratto da yt-dlp'));
+                    }
+                } else {
+                    console.log(`        Fast URL ERROR: yt-dlp fallito con codice ${code}`);
+                    reject(new Error(`yt-dlp fallito con codice ${code}`));
+                }
+            });
+
+            ytDlp.on('error', (error) => {
+                console.error(`        Fast URL ERROR: ${error.message}`);
+                reject(error);
+            });
+
+            // Timeout dopo 15 secondi
+            setTimeout(() => {
+                ytDlp.kill();
+                console.log(`        Fast URL TIMEOUT after 15 seconds`);
+                reject(new Error('Fast URL extraction timeout'));
+            }, 15000);
         });
     }
 }
