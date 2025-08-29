@@ -4,20 +4,72 @@ class StreamingService {
     constructor() {
         // Cache per evitare processi multipli per lo stesso video
         this.activeStreams = new Map();
+        // Cache per URL diretti del flusso rapido
+        this.fastUrlCache = new Map();
+    }
+    
+    /**
+     * Estrae l'ID del video da un URL YouTube
+     * @param {string} videoUrl - URL del video YouTube
+     * @returns {string} ID del video
+     */
+    extractVideoId(videoUrl) {
+        try {
+            const url = new URL(videoUrl);
+            if (url.hostname.includes('youtube.com') || url.hostname.includes('youtu.be')) {
+                if (url.pathname === '/watch') {
+                    return url.searchParams.get('v');
+                } else if (url.pathname.startsWith('/')) {
+                    return url.pathname.substring(1);
+                }
+            }
+            // Fallback: estrai ID da regex
+            const match = videoUrl.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+            return match ? match[1] : videoUrl;
+        } catch (error) {
+            console.log(`        Error extracting video ID: ${error.message}`);
+            return videoUrl; // Fallback all'URL completo
+        }
     }
     async createFastStream(videoUrl) {
         console.log(`        Initializing fast stream (pre-merged) for: ${videoUrl}`);
+        
+        // Estrai ID video per cache (evita estrazioni duplicate per stesso video)
+        const videoId = this.extractVideoId(videoUrl);
+        
+        // Cache per ID video (evita estrazioni duplicate)
+        if (this.fastUrlCache && this.fastUrlCache.has(videoId)) {
+            const cachedUrl = this.fastUrlCache.get(videoId);
+            console.log(`        Fast stream URL from cache for video ${videoId}: ${cachedUrl}`);
+            
+            const { Readable } = require('stream');
+            const stream = new Readable();
+            stream.push(`# Direct MP4 Stream (CACHED)
+# Video ID: ${videoId}
+# URL: ${cachedUrl}
+# Format: Pre-merged MP4 (no ffmpeg required)
+# Quality: Fast (720p max)
+# No yt-dlp streaming - direct URL only`);
+            stream.push(null);
+            return stream;
+        }
         
         try {
             // Ottieni URL diretto per streaming rapido (solo MP4 pre-mergeati)
             const directUrl = await this.createFastStreamUrl(videoUrl);
             console.log(`        Fast stream URL diretto ottenuto: ${directUrl}`);
             
+            // Cache l'URL per richieste future usando l'ID video
+            if (!this.fastUrlCache) this.fastUrlCache = new Map();
+            this.fastUrlCache.set(videoId, directUrl);
+            console.log(`        Fast stream URL cached for video ${videoId}`);
+            
             // Per il flusso rapido, restituisci sempre l'URL diretto
             // Non facciamo merge, non generiamo HLS, mai yt-dlp
             const { Readable } = require('stream');
             const stream = new Readable();
             stream.push(`# Direct MP4 Stream
+# Video ID: ${videoId}
 # URL: ${directUrl}
 # Format: Pre-merged MP4 (no ffmpeg required)
 # Quality: Fast (720p max)
