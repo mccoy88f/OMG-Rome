@@ -18,11 +18,23 @@ const streaming = new StreamingService();
 // Utility to decode base64 config
 function decodeConfig(configParam) {
     try {
-        if (!configParam) return {};
-        const configJson = Buffer.from(configParam, 'base64').toString('utf8');
-        return JSON.parse(configJson);
+        if (!configParam || configParam === '') return {};
+        
+        // Clean base64 string
+        const cleanBase64 = configParam.replace(/[^A-Za-z0-9+/=]/g, '');
+        
+        // Decode base64
+        const configJson = Buffer.from(cleanBase64, 'base64').toString('utf8');
+        
+        // Parse JSON with additional validation
+        if (!configJson || configJson.trim() === '') return {};
+        
+        const config = JSON.parse(configJson);
+        return config || {};
+        
     } catch (error) {
         console.error('Config decode error:', error.message);
+        console.error('Config param was:', configParam ? configParam.substring(0, 50) + '...' : 'empty');
         return {};
     }
 }
@@ -237,7 +249,18 @@ app.get('/proxy/:pluginName/:videoId', async (req, res) => {
         // Set streaming headers
         res.setHeader('Content-Type', 'video/mp4');
         res.setHeader('Accept-Ranges', 'bytes');
-        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Range');
+        
+        // Handle HEAD requests from video players
+        if (req.method === 'HEAD') {
+            res.status(200).end();
+            return;
+        }
         
         // Handle client disconnect
         req.on('close', () => {
