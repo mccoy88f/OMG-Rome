@@ -6,6 +6,8 @@ class StreamingService {
         this.activeStreams = new Map();
         // Cache per URL diretti del flusso rapido
         this.fastUrlCache = new Map();
+        // Protezione contro richieste simultanee per lo stesso video
+        this.pendingRequests = new Map();
     }
     
     /**
@@ -54,6 +56,26 @@ class StreamingService {
             return stream;
         }
         
+        // Protezione contro richieste simultanee per lo stesso video
+        if (this.pendingRequests.has(videoId)) {
+            console.log(`        Fast stream request already pending for video ${videoId}, waiting...`);
+            return this.pendingRequests.get(videoId);
+        }
+        
+        // Crea una Promise per questa richiesta
+        const requestPromise = this.createFastStreamInternal(videoUrl, videoId);
+        this.pendingRequests.set(videoId, requestPromise);
+        
+        try {
+            const result = await requestPromise;
+            return result;
+        } finally {
+            // Pulisci la Promise dalla cache
+            this.pendingRequests.delete(videoId);
+        }
+    }
+    
+    async createFastStreamInternal(videoUrl, videoId) {
         try {
             // Ottieni URL diretto per streaming rapido (solo MP4 pre-mergeati)
             const directUrl = await this.createFastStreamUrl(videoUrl);
@@ -183,12 +205,35 @@ class StreamingService {
     async createStream(videoUrl) {
         console.log(`        Initializing yt-dlp for: ${videoUrl}`);
         
+        // Estrai ID video per cache più intelligente
+        const videoId = this.extractVideoId(videoUrl);
+        
         // Controlla se esiste già uno stream attivo per questo video
-        if (this.activeStreams.has(videoUrl)) {
-            console.log(`        Reusing existing stream for: ${videoUrl}`);
-            return this.activeStreams.get(videoUrl);
+        if (this.activeStreams.has(videoId)) {
+            console.log(`        Reusing existing stream for video ${videoId}: ${videoUrl}`);
+            return this.activeStreams.get(videoId);
         }
         
+        // Protezione contro richieste simultanee per lo stesso video
+        if (this.pendingRequests.has(`best_${videoId}`)) {
+            console.log(`        Best stream request already pending for video ${videoId}, waiting...`);
+            return this.pendingRequests.get(`best_${videoId}`);
+        }
+        
+        // Crea una Promise per questa richiesta
+        const requestPromise = this.createStreamInternal(videoUrl, videoId);
+        this.pendingRequests.set(`best_${videoId}`, requestPromise);
+        
+        try {
+            const result = await requestPromise;
+            return result;
+        } finally {
+            // Pulisci la Promise dalla cache
+            this.pendingRequests.delete(`best_${videoId}`);
+        }
+    }
+    
+    async createStreamInternal(videoUrl, videoId) {
         return new Promise((resolve, reject) => {
             const startTime = Date.now();
             
@@ -241,8 +286,8 @@ class StreamingService {
                     console.log(`        SUCCESS: First data received after ${initTime}ms`);
                     console.log(`        ffmpeg merge completed, streaming to client...`);
                     
-                    // Salva lo stream nella cache
-                    this.activeStreams.set(videoUrl, ytDlp.stdout);
+                    // Salva lo stream nella cache usando l'ID video
+                    this.activeStreams.set(videoId, ytDlp.stdout);
                     
                     resolve(ytDlp.stdout);
                 }
@@ -291,7 +336,7 @@ class StreamingService {
                 const finalTime = Date.now() - startTime;
                 
                 // Pulisci la cache quando lo stream è completato
-                this.activeStreams.delete(videoUrl);
+                this.activeStreams.delete(videoId);
                 
                 if (code === 0) {
                     console.log(`        Stream completed successfully after ${finalTime}ms`);
