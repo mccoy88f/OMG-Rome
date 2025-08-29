@@ -41,8 +41,10 @@ function buildManifest(req) {
     activePlugins.forEach(plugin => {
         const pluginCatalogs = plugin.getCatalogs(config[plugin.getName()] || {});
         pluginCatalogs.forEach(catalog => {
+            // Search catalogs as movies, channel feeds as channels
+            const contentType = catalog.id === 'search' ? 'movie' : 'channel';
             catalogs.push({
-                type: 'movie',
+                type: contentType,
                 id: `${plugin.getName()}-${catalog.id}`,
                 name: catalog.name,
                 extra: catalog.extra || []
@@ -58,7 +60,7 @@ function buildManifest(req) {
         logo: `${baseUrl}/logo.png`,
         background: `${baseUrl}/background.jpg`,
         resources: ['catalog', 'stream', 'meta'],
-        types: ['movie'],
+        types: ['movie', 'channel'],
         idPrefixes: activePlugins.map(p => p.getName()),
         catalogs
     };
@@ -120,7 +122,7 @@ app.get('/catalog/:type/:id/:extra?.json', async (req, res) => {
             const results = await plugin.getChannels(config[pluginName] || {}, extra);
             metas = results.map(video => ({
                 id: `${pluginName}_${video.id}`,
-                type: 'movie',
+                type: 'channel',
                 name: video.title,
                 description: video.description,
                 poster: video.thumbnail,
@@ -239,8 +241,24 @@ app.get('/proxy/:pluginName/:videoId', async (req, res) => {
         
         // Handle client disconnect
         req.on('close', () => {
+            console.log('Client disconnected, killing stream');
             if (videoStream && videoStream.destroy) {
                 videoStream.destroy();
+            }
+        });
+
+        req.on('aborted', () => {
+            console.log('Request aborted, killing stream');
+            if (videoStream && videoStream.destroy) {
+                videoStream.destroy();
+            }
+        });
+
+        // Handle stream errors
+        videoStream.on('error', (error) => {
+            console.error('Video stream error:', error.message);
+            if (!res.headersSent) {
+                res.status(500).end();
             }
         });
 
