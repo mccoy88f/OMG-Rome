@@ -3,6 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      no_cache: true
     image: omg-rome:latest
     container_name: omg-rome
     restart: unless-stopped
