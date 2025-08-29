@@ -249,8 +249,29 @@ app.get('/proxy/:pluginName/:videoId', async (req, res) => {
             return res.status(404).json({ error: 'Plugin not found' });
         }
 
-        // Get video URL from plugin
+        // Handle HEAD requests from video players FIRST - NO PROCESSING NEEDED
+        if (req.method === 'HEAD') {
+            console.log(`        HEAD request - responding immediately without processing`);
+            
+            // Set appropriate headers for HEAD request
+            res.setHeader('Content-Type', 'video/mp4');
+            res.setHeader('Accept-Ranges', 'bytes');
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Range, Accept-Encoding');
+            
+            res.status(200).end();
+            return;
+        }
+        
+        // Get video URL from plugin (only for GET requests)
         const videoUrl = await plugin.getVideoUrl(videoId, config[pluginName] || {});
+        
+        // Create a unique key for this video+quality combination
+        const streamKey = `${videoUrl}_${quality}`;
         
         // Choose streaming method based on quality preference
         let videoStream;
@@ -286,12 +307,6 @@ app.get('/proxy/:pluginName/:videoId', async (req, res) => {
             res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
             res.setHeader('Access-Control-Allow-Headers', 'Range, Accept-Encoding');
             res.setHeader('Transfer-Encoding', 'chunked');
-        }
-        
-        // Handle HEAD requests from video players
-        if (req.method === 'HEAD') {
-            res.status(200).end();
-            return;
         }
         
         // Handle Range requests for better Stremio compatibility (only for video streams)

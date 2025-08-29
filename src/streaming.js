@@ -14,19 +14,22 @@ class StreamingService {
             console.log(`        Fast stream URL diretto ottenuto: ${directUrl}`);
             
             // Per il flusso rapido, restituisci sempre l'URL diretto
-            // Non facciamo merge, non generiamo HLS
+            // Non facciamo merge, non generiamo HLS, mai yt-dlp
             const { Readable } = require('stream');
             const stream = new Readable();
             stream.push(`# Direct MP4 Stream
 # URL: ${directUrl}
 # Format: Pre-merged MP4 (no ffmpeg required)
-# Quality: Fast (720p max)`);
+# Quality: Fast (720p max)
+# No yt-dlp streaming - direct URL only`);
             stream.push(null);
             return stream;
             
         } catch (error) {
-            console.log(`        Fast URL failed, falling back to streaming: ${error.message}`);
-            return this.createFastStreamDirect(videoUrl);
+            console.log(`        Fast URL failed: ${error.message}`);
+            // NON facciamo fallback a yt-dlp per il flusso rapido
+            // Restituiamo un errore invece di avviare processi
+            throw new Error(`Fast stream failed - no direct URL available: ${error.message}`);
         }
     }
 
