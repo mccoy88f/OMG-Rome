@@ -254,24 +254,39 @@ app.get('/proxy/:pluginName/:videoId', async (req, res) => {
         
         // Choose streaming method based on quality preference
         let videoStream;
+        let isFastStream = false;
+        
         if (quality === 'fast') {
             console.log(`        Using FAST stream (pre-merged) for ${videoUrl}`);
             videoStream = await streaming.createFastStream(videoUrl);
+            isFastStream = true;
         } else {
             console.log(`        Using BEST quality stream (with merge) for ${videoUrl}`);
             videoStream = await streaming.createStream(videoUrl);
         }
         
-        // Set streaming headers optimized for Stremio compatibility
-        res.setHeader('Content-Type', 'video/mp4');
-        res.setHeader('Accept-Ranges', 'bytes');
-        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-        res.setHeader('Pragma', 'no-cache');
-        res.setHeader('Expires', '0');
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Range, Accept-Encoding');
-        res.setHeader('Transfer-Encoding', 'chunked');
+        // Set headers based on stream type
+        if (isFastStream) {
+            // Fast stream returns text with direct URL
+            res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Range, Accept-Encoding');
+        } else {
+            // Best quality stream returns video
+            res.setHeader('Content-Type', 'video/mp4');
+            res.setHeader('Accept-Ranges', 'bytes');
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Range, Accept-Encoding');
+            res.setHeader('Transfer-Encoding', 'chunked');
+        }
         
         // Handle HEAD requests from video players
         if (req.method === 'HEAD') {
@@ -279,8 +294,8 @@ app.get('/proxy/:pluginName/:videoId', async (req, res) => {
             return;
         }
         
-        // Handle Range requests for better Stremio compatibility
-        if (req.headers.range) {
+        // Handle Range requests for better Stremio compatibility (only for video streams)
+        if (!isFastStream && req.headers.range) {
             console.log(`        Range request: ${req.headers.range}`);
         }
         
