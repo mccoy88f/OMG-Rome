@@ -6,19 +6,23 @@ class StreamingService {
         
         return new Promise((resolve, reject) => {
             const ytDlp = spawn('yt-dlp', [
-                '-f', 'bestvideo+bestaudio/best',
+                '-f', 'bestvideo[height<=720]+bestaudio/best[height<=720]/best',
                 '-o', '-',
                 '--no-playlist',
                 '--no-cache-dir',
-                '--buffer-size', '64K',
-                '--http-chunk-size', '2M',
-                '--retries', '5',
-                '--fragment-retries', '5',
-                '--socket-timeout', '60',
-                '--retry-sleep', '1',
+                '--buffer-size', '16K',
+                '--http-chunk-size', '1M',
+                '--retries', '3',
+                '--fragment-retries', '3',
+                '--socket-timeout', '30',
+                '--retry-sleep', '2',
                 '--merge-output-format', 'mp4',
-                '--extractor-args', 'youtube:player_client=android,web',
+                '--recode-video', 'mp4',
+                '--extractor-args', 'youtube:player_client=android',
+                '--extractor-args', 'youtube:skip=hls,dash',
                 '--no-check-certificates',
+                '--prefer-free-formats',
+                '--max-filesize', '500M',
                 videoUrl
             ]);
 
