@@ -170,20 +170,28 @@ app.get('/stream/:type/:id.json', async (req, res) => {
             return res.status(404).json({ error: 'Plugin not found' });
         }
 
-        // Build stream URL with config
+        // Build stream URLs with config
         const protocol = req.get('x-forwarded-proto') || (req.secure ? 'https' : 'http');
         const host = req.get('x-forwarded-host') || req.get('host');
         const baseUrl = `${protocol}://${host}`;
         
-        const streamUrl = req.query.config ? 
+        const baseStreamUrl = req.query.config ? 
             `${baseUrl}/proxy/${pluginName}/${videoId}?config=${req.query.config}` :
             `${baseUrl}/proxy/${pluginName}/${videoId}`;
 
         res.json({
-            streams: [{
-                url: streamUrl,
-                title: 'Migliore Qualità Disponibile'
-            }]
+            streams: [
+                {
+                    url: `${baseStreamUrl}?quality=fast`,
+                    title: 'Qualità Rapida (720p) - Audio+Video Sincronizzati',
+                    quality: 'fast'
+                },
+                {
+                    url: `${baseStreamUrl}?quality=best`,
+                    title: 'Migliore Qualità Disponibile - Richiede Merge',
+                    quality: 'best'
+                }
+            ]
         });
     } catch (error) {
         console.error('Stream error:', error);
@@ -234,6 +242,7 @@ app.get('/proxy/:pluginName/:videoId', async (req, res) => {
     try {
         const { pluginName, videoId } = req.params;
         const config = decodeConfig(req.query.config);
+        const quality = req.query.quality || 'best'; // Default to best quality
         
         const plugin = pluginManager.getPlugin(pluginName);
         if (!plugin) {
@@ -243,10 +252,17 @@ app.get('/proxy/:pluginName/:videoId', async (req, res) => {
         // Get video URL from plugin
         const videoUrl = await plugin.getVideoUrl(videoId, config[pluginName] || {});
         
-        // Create yt-dlp stream
-        const videoStream = await streaming.createStream(videoUrl);
+        // Choose streaming method based on quality preference
+        let videoStream;
+        if (quality === 'fast') {
+            console.log(`        Using FAST stream (pre-merged) for ${videoUrl}`);
+            videoStream = await streaming.createFastStream(videoUrl);
+        } else {
+            console.log(`        Using BEST quality stream (with merge) for ${videoUrl}`);
+            videoStream = await streaming.createStream(videoUrl);
+        }
         
-        // Set streaming headers
+        // Set streaming headers optimized for Stremio compatibility
         res.setHeader('Content-Type', 'video/mp4');
         res.setHeader('Accept-Ranges', 'bytes');
         res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -254,12 +270,18 @@ app.get('/proxy/:pluginName/:videoId', async (req, res) => {
         res.setHeader('Expires', '0');
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Range');
+        res.setHeader('Access-Control-Allow-Headers', 'Range, Accept-Encoding');
+        res.setHeader('Transfer-Encoding', 'chunked');
         
         // Handle HEAD requests from video players
         if (req.method === 'HEAD') {
             res.status(200).end();
             return;
+        }
+        
+        // Handle Range requests for better Stremio compatibility
+        if (req.headers.range) {
+            console.log(`        Range request: ${req.headers.range}`);
         }
         
         // Handle client disconnect

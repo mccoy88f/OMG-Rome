@@ -8,7 +8,7 @@ class StreamingService {
             const startTime = Date.now();
             
             const ytDlp = spawn('yt-dlp', [
-                '-f', 'best[height<=720]/best', // Pre-merged format, no ffmpeg needed
+                '-f', 'best[height<=720][ext=mp4]/best[height<=720]/best[ext=mp4]/best', // Pre-merged format, no ffmpeg needed
                 '-o', '-',
                 '--no-playlist',
                 '--no-cache-dir',
@@ -18,6 +18,8 @@ class StreamingService {
                 '--socket-timeout', '30',
                 '--extractor-args', 'youtube:player_client=android',
                 '--no-check-certificates',
+                '--audio-format', 'm4a',
+                '--audio-quality', '0',
                 videoUrl
             ], {
                 stdio: ['ignore', 'pipe', 'pipe']
@@ -98,7 +100,7 @@ class StreamingService {
             const startTime = Date.now();
             
             const ytDlp = spawn('yt-dlp', [
-                '-f', 'bestvideo+bestaudio/best',
+                '-f', 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best',
                 '-o', '-',
                 '--no-playlist',
                 '--no-cache-dir',
@@ -113,6 +115,8 @@ class StreamingService {
                 '--no-check-certificates',
                 '--hls-prefer-native',
                 '--prefer-ffmpeg',
+                '--audio-format', 'm4a',
+                '--audio-quality', '0',
                 videoUrl
             ], {
                 stdio: ['ignore', 'pipe', 'pipe']
