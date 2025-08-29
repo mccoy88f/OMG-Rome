@@ -6,7 +6,7 @@ class StreamingService {
         
         return new Promise((resolve, reject) => {
             const ytDlp = spawn('yt-dlp', [
-                '-f', 'bestvideo[height<=720]+bestaudio/best[height<=720]/best',
+                '-f', 'best[height<=720]/best/worst',
                 '-o', '-',
                 '--no-playlist',
                 '--no-cache-dir',
@@ -16,10 +16,7 @@ class StreamingService {
                 '--fragment-retries', '3',
                 '--socket-timeout', '30',
                 '--retry-sleep', '2',
-                '--merge-output-format', 'mp4',
-                '--recode-video', 'mp4',
                 '--extractor-args', 'youtube:player_client=android',
-                '--extractor-args', 'youtube:skip=hls,dash',
                 '--no-check-certificates',
                 '--prefer-free-formats',
                 '--max-filesize', '500M',
