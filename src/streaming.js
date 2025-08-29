@@ -1,6 +1,10 @@
 const { spawn } = require('child_process');
 
 class StreamingService {
+    constructor() {
+        // Cache per evitare processi multipli per lo stesso video
+        this.activeStreams = new Map();
+    }
     async createFastStream(videoUrl) {
         console.log(`        Initializing fast stream (pre-merged) for: ${videoUrl}`);
         
@@ -124,6 +128,12 @@ class StreamingService {
     async createStream(videoUrl) {
         console.log(`        Initializing yt-dlp for: ${videoUrl}`);
         
+        // Controlla se esiste già uno stream attivo per questo video
+        if (this.activeStreams.has(videoUrl)) {
+            console.log(`        Reusing existing stream for: ${videoUrl}`);
+            return this.activeStreams.get(videoUrl);
+        }
+        
         return new Promise((resolve, reject) => {
             const startTime = Date.now();
             
@@ -175,6 +185,10 @@ class StreamingService {
                     const initTime = Date.now() - startTime;
                     console.log(`        SUCCESS: First data received after ${initTime}ms`);
                     console.log(`        ffmpeg merge completed, streaming to client...`);
+                    
+                    // Salva lo stream nella cache
+                    this.activeStreams.set(videoUrl, ytDlp.stdout);
+                    
                     resolve(ytDlp.stdout);
                 }
                 
@@ -220,6 +234,9 @@ class StreamingService {
             ytDlp.on('exit', (code, signal) => {
                 clearTimeout(initTimeout);
                 const finalTime = Date.now() - startTime;
+                
+                // Pulisci la cache quando lo stream è completato
+                this.activeStreams.delete(videoUrl);
                 
                 if (code === 0) {
                     console.log(`        Stream completed successfully after ${finalTime}ms`);
